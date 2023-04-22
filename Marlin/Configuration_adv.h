@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2021 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -349,6 +349,10 @@
   #define WATCH_COOLER_TEMP_INCREASE            3 // Degrees Celsius
 #endif
 
+#if ANY(THERMAL_PROTECTION_HOTENDS, THERMAL_PROTECTION_BED, THERMAL_PROTECTION_CHAMBER, THERMAL_PROTECTION_COOLER)
+  #define THERMAL_PROTECTION_VARIANCE_MONITOR     // Detect a sensor malfunction preventing temperature updates
+#endif
+
 #if ENABLED(PIDTEMP)
   // Add an experimental additional term to the heater power, proportional to the extrusion speed.
   // A well-chosen Kc value should add just enough power to melt the increased material volume.
@@ -506,20 +510,20 @@
  * The fan turns on automatically whenever any driver is enabled and turns
  * off (or reduces to idle speed) shortly after drivers are turned off.
  */
-//#define USE_CONTROLLER_FAN
+#define USE_CONTROLLER_FAN
 #if ENABLED(USE_CONTROLLER_FAN)
-  //#define CONTROLLER_FAN_PIN -1           // Set a custom pin for the controller fan
+  #define CONTROLLER_FAN_PIN FAN2_PIN           // Set a custom pin for the controller fan
   //#define CONTROLLER_FAN_USE_Z_ONLY       // With this option only the Z axis is considered
   //#define CONTROLLER_FAN_IGNORE_Z         // Ignore Z stepper. Useful when stepper timeout is disabled.
   #define CONTROLLERFAN_SPEED_MIN         0 // (0-255) Minimum speed. (If set below this value the fan is turned off.)
-  #define CONTROLLERFAN_SPEED_ACTIVE    255 // (0-255) Active speed, used when any motor is enabled
+  #define CONTROLLERFAN_SPEED_ACTIVE    128 // (0-255) Active speed, used when any motor is enabled
   #define CONTROLLERFAN_SPEED_IDLE        0 // (0-255) Idle speed, used when motors are disabled
   #define CONTROLLERFAN_IDLE_TIME        60 // (seconds) Extra time to keep the fan running after disabling motors
 
   // Use TEMP_SENSOR_BOARD as a trigger for enabling the controller fan
   //#define CONTROLLER_FAN_MIN_BOARD_TEMP 40  // (°C) Turn on the fan if the board reaches this temperature
 
-  //#define CONTROLLER_FAN_EDITABLE         // Enable M710 configurable settings
+  #define CONTROLLER_FAN_EDITABLE         // Enable M710 configurable settings
   #if ENABLED(CONTROLLER_FAN_EDITABLE)
     #define CONTROLLER_FAN_MENU             // Enable the Controller Fan submenu
   #endif
@@ -567,8 +571,8 @@
  *
  * USE_OCR2A_AS_TOP [undefined by default]
  *   Boards that use TIMER2 for PWM have limitations resulting in only a few possible frequencies on TIMER2:
- *   16MHz MCUs: [62.5KHz, 31.4KHz (default), 7.8KHz, 3.92KHz, 1.95KHz, 977Hz, 488Hz, 244Hz, 60Hz, 122Hz, 30Hz]
- *   20MHz MCUs: [78.1KHz, 39.2KHz (default), 9.77KHz, 4.9KHz, 2.44KHz, 1.22KHz, 610Hz, 305Hz, 153Hz, 76Hz, 38Hz]
+ *   16MHz MCUs: [62.5kHz, 31.4kHz (default), 7.8kHz, 3.92kHz, 1.95kHz, 977Hz, 488Hz, 244Hz, 60Hz, 122Hz, 30Hz]
+ *   20MHz MCUs: [78.1kHz, 39.2kHz (default), 9.77kHz, 4.9kHz, 2.44kHz, 1.22kHz, 610Hz, 305Hz, 153Hz, 76Hz, 38Hz]
  *   A greater range can be achieved by enabling USE_OCR2A_AS_TOP. But note that this option blocks the use of
  *   PWM on pin OC2A. Only use this option if you don't need PWM on 0C2A. (Check your schematic.)
  *   USE_OCR2A_AS_TOP sacrifices duty cycle control resolution to achieve this broader range of frequencies.
@@ -605,7 +609,7 @@
  * Multiple extruders can be assigned to the same pin in which case
  * the fan will turn on when any selected extruder is above the threshold.
  */
-#define E0_AUTO_FAN_PIN -1
+#define E0_AUTO_FAN_PIN FAN1_PIN
 #define E1_AUTO_FAN_PIN -1
 #define E2_AUTO_FAN_PIN -1
 #define E3_AUTO_FAN_PIN -1
@@ -747,7 +751,11 @@
 //
 // For Z set the number of stepper drivers
 //
-#define NUM_Z_STEPPER_DRIVERS 1   // (1-4) Z options change based on how many
+#if ENABLED(SV01_DUAL_Z_ENABLE)
+  #define NUM_Z_STEPPER_DRIVERS 2 // (1-4) Z options change based on how many
+#else
+  #define NUM_Z_STEPPER_DRIVERS 1 // (1-4) Z options change based on how many
+#endif
 
 #if NUM_Z_STEPPER_DRIVERS > 1
   // Enable if Z motor direction signals are the opposite of Z1
@@ -1276,48 +1284,78 @@
   #define FEEDRATE_CHANGE_BEEP_FREQUENCY 440
 #endif
 
-#if HAS_LCD_MENU
+#if HAS_BED_PROBE && EITHER(HAS_MARLINUI_MENU, HAS_TFT_LVGL_UI)
+  //#define PROBE_OFFSET_WIZARD       // Add a Probe Z Offset calibration option to the LCD menu
+  #if ENABLED(PROBE_OFFSET_WIZARD)
+    /**
+     * Enable to init the Probe Z-Offset when starting the Wizard.
+     * Use a height slightly above the estimated nozzle-to-probe Z offset.
+     * For example, with an offset of -5, consider a starting height of -4.
+     */
+    //#define PROBE_OFFSET_WIZARD_START_Z -4.0
 
-  // Add Probe Z Offset calibration to the Z Probe Offsets menu
-  #if HAS_BED_PROBE
-    //#define PROBE_OFFSET_WIZARD
-    #if ENABLED(PROBE_OFFSET_WIZARD)
-      //
-      // Enable to init the Probe Z-Offset when starting the Wizard.
-      // Use a height slightly above the estimated nozzle-to-probe Z offset.
-      // For example, with an offset of -5, consider a starting height of -4.
-      //
-      //#define PROBE_OFFSET_WIZARD_START_Z -4.0
+    // Set a convenient position to do the calibration (probing point and nozzle/bed-distance)
+    //#define PROBE_OFFSET_WIZARD_XY_POS { X_CENTER, Y_CENTER }
+  #endif
+#endif
 
-      // Set a convenient position to do the calibration (probing point and nozzle/bed-distance)
-      //#define PROBE_OFFSET_WIZARD_XY_POS { X_CENTER, Y_CENTER }
-    #endif
+#if HAS_MARLINUI_MENU
 
-    #if ENABLED(AUTO_BED_LEVELING_BILINEAR)
-      // Add a calibration procedure in the Probe Offsets menu
-      // to compensate for twist in the X-axis.
-      //#define X_AXIS_TWIST_COMPENSATION
-      #if ENABLED(X_AXIS_TWIST_COMPENSATION)
-        /**
-         * Enable to init the Probe Z-Offset when starting the Wizard.
-         * Use a height slightly above the estimated nozzle-to-probe Z offset.
-         * For example, with an offset of -5, consider a starting height of -4.
-         */
-        #define XATC_START_Z 0.0
-        #define XATC_MAX_POINTS 3             // Number of points to probe in the wizard
-        #define XATC_Y_POSITION Y_CENTER      // (mm) Y position to probe
-      #endif
+  #if BOTH(HAS_BED_PROBE, AUTO_BED_LEVELING_BILINEAR)
+    // Add calibration in the Probe Offsets menu to compensate for X-axis twist.
+    //#define X_AXIS_TWIST_COMPENSATION
+    #if ENABLED(X_AXIS_TWIST_COMPENSATION)
+      /**
+       * Enable to init the Probe Z-Offset when starting the Wizard.
+       * Use a height slightly above the estimated nozzle-to-probe Z offset.
+       * For example, with an offset of -5, consider a starting height of -4.
+       */
+      #define XATC_START_Z 0.0
+      #define XATC_MAX_POINTS 3             // Number of points to probe in the wizard
+      #define XATC_Y_POSITION Y_CENTER      // (mm) Y position to probe
     #endif
   #endif
 
   // Include a page of printer information in the LCD Main Menu
-  //#define LCD_INFO_MENU
+  #define LCD_INFO_MENU
   #if ENABLED(LCD_INFO_MENU)
     //#define LCD_PRINTER_INFO_IS_BOOTSCREEN // Show bootscreen(s) instead of Printer Info pages
   #endif
 
   // BACK menu items keep the highlight at the top
   //#define TURBO_BACK_MENU_ITEM
+
+  // Insert a menu for preheating at the top level to allow for quick access
+  //#define PREHEAT_SHORTCUT_MENU_ITEM
+
+#endif // HAS_MARLINUI_MENU
+
+#if ANY(HAS_DISPLAY, DWIN_CREALITY_LCD_ENHANCED, DWIN_CREALITY_LCD_JYERSUI)
+  //#define SOUND_MENU_ITEM   // Add a mute option to the LCD menu
+#endif
+
+#if EITHER(HAS_DISPLAY, DWIN_CREALITY_LCD_ENHANCED)
+  // The timeout (in ms) to return to the status screen from sub-menus
+  //#define LCD_TIMEOUT_TO_STATUS 15000
+
+  #if ENABLED(SHOW_BOOTSCREEN)
+    #define BOOTSCREEN_TIMEOUT 4000      // (ms) Total Duration to display the boot screen(s)
+    #if EITHER(HAS_MARLINUI_U8GLIB, TFT_COLOR_UI)
+      #define BOOT_MARLIN_LOGO_SMALL     // Show a smaller Marlin logo on the Boot Screen (saving lots of flash)
+    #endif
+  #endif
+
+  // Scroll a longer status message into view
+  #define STATUS_MESSAGE_SCROLLING
+
+  // On the Info Screen, display XY with one decimal place when possible
+  #define LCD_DECIMAL_SMALL_XY
+
+  // Add an 'M73' G-code to set the current percentage
+  #define LCD_SET_PROGRESS_MANUALLY
+
+  // Show the E position (filament used) during printing
+  //#define LCD_SHOW_E_TOTAL
 
   /**
    * LED Control Menu
@@ -1345,37 +1383,6 @@
     #endif
   #endif
 
-  // Insert a menu for preheating at the top level to allow for quick access
-  //#define PREHEAT_SHORTCUT_MENU_ITEM
-
-#endif // HAS_LCD_MENU
-
-#if ANY(HAS_DISPLAY, DWIN_CREALITY_LCD_ENHANCED, DWIN_CREALITY_LCD_JYERSUI)
-  //#define SOUND_MENU_ITEM   // Add a mute option to the LCD menu
-#endif
-
-#if EITHER(HAS_DISPLAY, DWIN_CREALITY_LCD_ENHANCED)
-  // The timeout (in ms) to return to the status screen from sub-menus
-  //#define LCD_TIMEOUT_TO_STATUS 15000
-
-  #if ENABLED(SHOW_BOOTSCREEN)
-    #define BOOTSCREEN_TIMEOUT 4000      // (ms) Total Duration to display the boot screen(s)
-    #if EITHER(HAS_MARLINUI_U8GLIB, TFT_COLOR_UI)
-      #define BOOT_MARLIN_LOGO_SMALL     // Show a smaller Marlin logo on the Boot Screen (saving lots of flash)
-    #endif
-  #endif
-
-  // Scroll a longer status message into view
-  //#define STATUS_MESSAGE_SCROLLING
-
-  // On the Info Screen, display XY with one decimal place when possible
-  //#define LCD_DECIMAL_SMALL_XY
-
-  // Add an 'M73' G-code to set the current percentage
-  //#define LCD_SET_PROGRESS_MANUALLY
-
-  // Show the E position (filament used) during printing
-  //#define LCD_SHOW_E_TOTAL
 #endif
 
 // LCD Print Progress options
@@ -1457,7 +1464,7 @@
    * an option on the LCD screen to continue the print from the last-known
    * point in the file.
    */
-  //#define POWER_LOSS_RECOVERY
+  #define POWER_LOSS_RECOVERY
   #if ENABLED(POWER_LOSS_RECOVERY)
     #define PLR_ENABLED_DEFAULT   false // Power Loss Recovery enabled by default. (Set with 'M413 Sn' & M500)
     //#define BACKUP_POWER_SUPPLY       // Backup power / UPS to move the steppers on power loss
@@ -1471,7 +1478,7 @@
 
     // Without a POWER_LOSS_PIN the following option helps reduce wear on the SD card,
     // especially with "vase mode" printing. Set too high and vases cannot be continued.
-    #define POWER_LOSS_MIN_Z_CHANGE 0.05 // (mm) Minimum Z change before saving power-loss data
+    #define POWER_LOSS_MIN_Z_CHANGE 2 // (mm) Minimum Z change before saving power-loss data
 
     // Enable if Z homing is needed for proper recovery. 99.9% of the time this should be disabled!
     //#define POWER_LOSS_RECOVER_ZHOME
@@ -1503,7 +1510,7 @@
    *  - SDSORT_CACHE_NAMES will retain the sorted file listing in RAM. (Expensive!)
    *  - SDSORT_DYNAMIC_RAM only uses RAM when the SD menu is visible. (Use with caution!)
    */
-  //#define SDCARD_SORT_ALPHA
+  #define SDCARD_SORT_ALPHA
 
   // SD Card Sorting options
   #if ENABLED(SDCARD_SORT_ALPHA)
@@ -1522,33 +1529,23 @@
   // LCD's font must contain the characters. Check your selected LCD language.
   //#define UTF_FILENAME_SUPPORT
 
-  // This allows hosts to request long names for files and folders with M33
-  //#define LONG_FILENAME_HOST_SUPPORT
+  #define LONG_FILENAME_HOST_SUPPORT      // Get the long filename of a file/folder with 'M33 <dosname>' and list long filenames with 'M20 L'
+  //#define LONG_FILENAME_WRITE_SUPPORT   // Create / delete files with long filenames via M28, M30, and Binary Transfer Protocol
 
-  // Enable this option to scroll long filenames in the SD card menu
-  //#define SCROLL_LONG_FILENAMES
+  #define SCROLL_LONG_FILENAMES           // Scroll long filenames in the SD card menu
 
-  // Leave the heaters on after Stop Print (not recommended!)
-  //#define SD_ABORT_NO_COOLDOWN
+  //#define SD_ABORT_NO_COOLDOWN          // Leave the heaters on after Stop Print (not recommended!)
 
   /**
-   * This option allows you to abort SD printing when any endstop is triggered.
-   * This feature must be enabled with "M540 S1" or from the LCD menu.
-   * To have any effect, endstops must be enabled during SD printing.
+   * Abort SD printing when any endstop is triggered.
+   * This feature is enabled with 'M540 S1' or from the LCD menu.
+   * Endstops must be activated for this option to work.
    */
   //#define SD_ABORT_ON_ENDSTOP_HIT
 
-  /**
-   * This option makes it easier to print the same SD Card file again.
-   * On print completion the LCD Menu will open with the file selected.
-   * You can just click to start the print, or navigate elsewhere.
-   */
-  //#define SD_REPRINT_LAST_SELECTED_FILE
+  //#define SD_REPRINT_LAST_SELECTED_FILE // On print completion open the LCD Menu and select the same file
 
-  /**
-   * Auto-report SdCard status with M27 S<seconds>
-   */
-  //#define AUTO_REPORT_SD_STATUS
+  //#define AUTO_REPORT_SD_STATUS         // Auto-report media status with 'M27 S<seconds>'
 
   /**
    * Support for USB thumb drives using an Arduino USB Host Shield or
@@ -1617,6 +1614,11 @@
   // Add an optimized binary file transfer mode, initiated with 'M28 B1'
   //#define BINARY_FILE_TRANSFER
 
+  #if ENABLED(BINARY_FILE_TRANSFER)
+    // Include extra facilities (e.g., 'M20 F') supporting firmware upload via BINARY_FILE_TRANSFER
+    //#define CUSTOM_FIRMWARE_UPLOAD
+  #endif
+
   /**
    * Set this option to one of the following (or the board's defaults apply):
    *
@@ -1626,7 +1628,7 @@
    *
    * :[ 'LCD', 'ONBOARD', 'CUSTOM_CABLE' ]
    */
-  //#define SDCARD_CONNECTION LCD
+  #define SDCARD_CONNECTION ONBOARD
 
   // Enable if SD detect is rendered useless (e.g., by using an SD extender)
   //#define NO_SD_DETECT
@@ -1647,6 +1649,15 @@
  * storage device. This option hides the SD card from the host PC.
  */
 //#define NO_SD_HOST_DRIVE   // Disable SD Card access over USB (for security).
+
+/**
+ * By default the framework is responsible for the shared media I/O.
+ * Enable this if you need Marlin to take care of the shared media I/O.
+ * Useful if shared media isn't working properly on some boards.
+ */
+#if ENABLED(SDSUPPORT) && DISABLED(NO_SD_HOST_DRIVE)
+  //#define DISKIO_HOST_DRIVE
+#endif
 
 /**
  * Additional options for Graphical Displays
@@ -1726,7 +1737,7 @@
 
 #if HAS_MARLINUI_U8GLIB || IS_DWIN_MARLINUI
   // Show SD percentage next to the progress bar
-  //#define SHOW_SD_PERCENT
+  #define SHOW_SD_PERCENT
 
   // Enable to save many cycles by drawing a hollow frame on Menu Screens
   #define MENU_HOLLOW_FRAME
@@ -1942,7 +1953,7 @@
  *
  * Warning: Does not respect endstops!
  */
-//#define BABYSTEPPING
+#define BABYSTEPPING
 #if ENABLED(BABYSTEPPING)
   //#define INTEGRATED_BABYSTEPPING         // EXPERIMENTAL integration of babystepping into the Stepper ISR
   //#define BABYSTEP_WITHOUT_HOMING
@@ -1953,7 +1964,7 @@
   #define BABYSTEP_MULTIPLICATOR_Z  1       // (steps or mm) Steps or millimeter distance for each Z babystep
   #define BABYSTEP_MULTIPLICATOR_XY 1       // (steps or mm) Steps or millimeter distance for each XY babystep
 
-  //#define DOUBLECLICK_FOR_Z_BABYSTEPPING  // Double-click on the Status Screen for Z Babystepping.
+  #define DOUBLECLICK_FOR_Z_BABYSTEPPING    // Double-click on the Status Screen for Z Babystepping.
   #if ENABLED(DOUBLECLICK_FOR_Z_BABYSTEPPING)
     #define DOUBLECLICK_MAX_INTERVAL 1250   // Maximum interval between clicks, in milliseconds.
                                             // Note: Extra time may be added to mitigate controller latency.
@@ -1989,7 +2000,7 @@
  *
  * See https://marlinfw.org/docs/features/lin_advance.html for full instructions.
  */
-//#define LIN_ADVANCE
+#define LIN_ADVANCE
 #if ENABLED(LIN_ADVANCE)
   //#define EXTRA_LIN_ADVANCE_K // Enable for second linear advance constants
   #define LIN_ADVANCE_K 0.22    // Unit: mm compression per 1mm/s extruder speed
@@ -2304,7 +2315,7 @@
  * Currently handles M108, M112, M410, M876
  * NOTE: Not yet implemented for all platforms.
  */
-//#define EMERGENCY_PARSER
+#define EMERGENCY_PARSER
 
 /**
  * Realtime Reporting (requires EMERGENCY_PARSER)
@@ -2367,7 +2378,7 @@
  *
  * Note that M207 / M208 / M209 settings are saved to EEPROM.
  */
-//#define FWRETRACT
+#define FWRETRACT
 #if ENABLED(FWRETRACT)
   #define FWRETRACT_AUTORETRACT             // Override slicer retractions
   #if ENABLED(FWRETRACT_AUTORETRACT)
@@ -2482,7 +2493,7 @@
  *
  * Enable PARK_HEAD_ON_PAUSE to add the G-code M125 Pause and Park.
  */
-//#define ADVANCED_PAUSE_FEATURE
+#define ADVANCED_PAUSE_FEATURE
 #if ENABLED(ADVANCED_PAUSE_FEATURE)
   #define PAUSE_PARK_RETRACT_FEEDRATE         60  // (mm/s) Initial retract feedrate.
   #define PAUSE_PARK_RETRACT_LENGTH            2  // (mm) Initial retract.
@@ -2966,7 +2977,7 @@
    * Define your own with:
    * { <off_time[1..15]>, <hysteresis_end[-3..12]>, hysteresis_start[1..8] }
    */
-  #define CHOPPER_TIMING CHOPPER_DEFAULT_12V        // All axes (override below)
+  #define CHOPPER_TIMING CHOPPER_DEFAULT_24V        // All axes (override below)
   //#define CHOPPER_TIMING_X  CHOPPER_TIMING        // For X Axes (override below)
   //#define CHOPPER_TIMING_X2 CHOPPER_TIMING_X
   //#define CHOPPER_TIMING_Y  CHOPPER_TIMING        // For Y Axes (override below)
@@ -3095,7 +3106,7 @@
    * Beta feature!
    * Create a 50/50 square wave step pulse optimal for stepper drivers.
    */
-  //#define SQUARE_WAVE_STEPPING
+  #define SQUARE_WAVE_STEPPING
 
   /**
    * Enable M122 debugging command for TMC stepper drivers.
@@ -3215,7 +3226,7 @@
     #define Z4_SLEW_RATE                 1
   #endif
 
-  #if AXIS_DRIVER_TYPE_I(L6470)
+  #if AXIS_IS_L64XX(I)
     #define I_MICROSTEPS      128
     #define I_OVERCURRENT    2000
     #define I_STALLCURRENT   1500
@@ -3224,7 +3235,7 @@
     #define I_SLEW_RATE         1
   #endif
 
-  #if AXIS_DRIVER_TYPE_J(L6470)
+  #if AXIS_IS_L64XX(J)
     #define J_MICROSTEPS      128
     #define J_OVERCURRENT    2000
     #define J_STALLCURRENT   1500
@@ -3233,7 +3244,7 @@
     #define J_SLEW_RATE         1
   #endif
 
-  #if AXIS_DRIVER_TYPE_K(L6470)
+  #if AXIS_IS_L64XX(K)
     #define K_MICROSTEPS      128
     #define K_OVERCURRENT    2000
     #define K_STALLCURRENT   1500
@@ -3711,6 +3722,14 @@
 //#define CNC_COORDINATE_SYSTEMS
 
 /**
+ * CNC Drilling Cycle - UNDER DEVELOPMENT
+ *
+ * Enables G81 to perform a drilling cycle.
+ * Currently only supports a single cycle, no G-code chaining.
+ */
+//#define CNC_DRILLING_CYCLE
+
+/**
  * Auto-report fan speed with M123 S<seconds>
  * Requires fans with tachometer pins
  */
@@ -3739,7 +3758,7 @@
  * Add the M16 G-code to compare a string to the MACHINE_NAME.
  * M16 with a non-matching string causes the printer to halt.
  */
-//#define EXPECTED_PRINTER_CHECK
+#define EXPECTED_PRINTER_CHECK
 
 /**
  * Disable all Volumetric extrusion options
@@ -3779,7 +3798,7 @@
 //#define NO_WORKSPACE_OFFSETS
 
 // Extra options for the M114 "Current Position" report
-//#define M114_DETAIL         // Use 'M114` for details to check planner calculations
+#define M114_DETAIL           // Use 'M114` for details to check planner calculations
 //#define M114_REALTIME       // Real current position based on forward kinematics
 //#define M114_LEGACY         // M114 used to synchronize on every call. Enable if needed.
 
@@ -3810,6 +3829,8 @@
 //#define GCODE_CASE_INSENSITIVE  // Accept G-code sent to the firmware in lowercase
 
 //#define REPETIER_GCODE_M360     // Add commands originally from Repetier FW
+
+//#define RRF_GCODE_DIALECT       // Add M20 JSON file listings, M408, and more...
 
 /**
  * CNC G-code options
@@ -3955,7 +3976,7 @@
  * Host Prompt Support enables Marlin to use the host for user prompts so
  * filament runout and other processes can be managed from the host side.
  */
-//#define HOST_ACTION_COMMANDS
+#define HOST_ACTION_COMMANDS
 #if ENABLED(HOST_ACTION_COMMANDS)
   //#define HOST_PAUSE_M76
   //#define HOST_PROMPT_SUPPORT
@@ -4256,6 +4277,8 @@
     #define MMU2_CAN_LOAD_INCREMENT_SEQUENCE \
       { -MMU2_CAN_LOAD_INCREMENT, MMU2_CAN_LOAD_FEEDRATE }
 
+    // Continue unloading if sensor detects filament after the initial unload move
+    //#define MMU_IR_UNLOAD_MOVE
   #else
 
     /**
